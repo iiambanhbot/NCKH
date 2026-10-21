@@ -159,3 +159,16 @@ def test_roundtrip_serialization() -> None:
     reconstructed = Paper.from_dict(d)
     assert original == reconstructed
     assert reconstructed.analyzed is True
+
+
+def test_paper_hashable_and_set_membership() -> None:
+    """Kiểm tra Paper có thể được băm (hashable) và dùng trong set/dict mà không gây lỗi TypeError."""
+    p1 = Paper(title="Kinh tế số", year=2024, doi="10.1234/test1")
+    p2 = Paper(title="Tăng trưởng", year=2023)
+    p3 = Paper(title="Kinh tế số", year=2024, doi="10.1234/test1")
+
+    paper_set = {p1, p2}
+    assert len(paper_set) == 2
+    assert p1 in paper_set
+    assert p2 in paper_set
+    assert p3 in paper_set

@@ -149,6 +149,10 @@ class SelectionStore:
         else:
             self._selected_ids.discard(paper_id)
 
+    def clear_selection(self) -> None:
+        """Xóa toàn bộ các bài báo đang được đánh dấu chọn."""
+        self._selected_ids.clear()
+
     def get_selected(self) -> list[Paper]:
         """
         Lấy danh sách các đối tượng Paper đang được người dùng đánh dấu chọn.
@@ -312,35 +316,31 @@ class SelectionStore:
         self.target_count = 10
 
 
-def get_store() -> SelectionStore:
+_stores: dict[str, SelectionStore] = {}
+
+
+def get_store(session_id: str = "default") -> SelectionStore:
     """
-    Lấy hoặc khởi tạo instance SelectionStore duy nhất lưu trong st.session_state.
+    Lấy hoặc khởi tạo instance SelectionStore theo session_id.
+    Hoạt động hoàn toàn độc lập với Streamlit, đồng thời vẫn giữ tương thích ngược nếu chạy dưới môi trường Streamlit.
+
+    Đầu vào:
+        session_id: Khóa phiên làm việc của người dùng (mặc định 'default').
 
     Đầu ra:
-        Đối tượng SelectionStore dùng chung cho toàn bộ phiên người dùng.
+        Đối tượng SelectionStore tương ứng với phiên người dùng.
     """
-    import streamlit as st
+    try:
+        import sys
+        if "streamlit" in sys.modules:
+            import streamlit as st
+            if hasattr(st, "session_state") and st.session_state is not None:
+                if "selection_store" not in st.session_state:
+                    st.session_state["selection_store"] = SelectionStore()
+                return st.session_state["selection_store"]
+    except Exception:
+        pass
 
-    if "selection_store" not in st.session_state:
-        st.session_state["selection_store"] = SelectionStore()
-    else:
-        existing = st.session_state["selection_store"]
-        if not hasattr(existing, "set_roadmap"):
-            new_store = SelectionStore()
-            for k in ("topic", "keywords", "pool", "offsets", "_papers", "_selected_ids", "notes", "reasons", "target_count"):
-                if hasattr(existing, k):
-                    setattr(new_store, k, getattr(existing, k))
-            if hasattr(existing, "roadmap"):
-                new_store.roadmap = getattr(existing, "roadmap")
-            if hasattr(existing, "roadmap_progress"):
-                new_store.roadmap_progress = getattr(existing, "roadmap_progress")
-            st.session_state["selection_store"] = new_store
-
-    store = st.session_state["selection_store"]
-    if not hasattr(store, "roadmap") or store.roadmap is None:
-        store.roadmap = {}
-    if not hasattr(store, "roadmap_progress") or store.roadmap_progress is None:
-        store.roadmap_progress = {}
-    if not hasattr(store, "target_count") or store.target_count is None:
-        store.target_count = 10
-    return store
+    if session_id not in _stores:
+        _stores[session_id] = SelectionStore()
+    return _stores[session_id]

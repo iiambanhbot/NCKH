@@ -16,7 +16,7 @@ from core.paper import Paper
 logger = logging.getLogger(__name__)
 
 
-def score_papers(papers: list[Paper], topic: str) -> list[Paper]:
+def score_papers(papers: list[Paper], topic: str, criteria: Optional[str] = None) -> list[Paper]:
     """
     Chấm điểm sơ bộ mức độ liên quan (0-100) của các bài báo với đề tài nghiên cứu kinh tế.
     Gộp theo lô tối đa CANDIDATE_POOL_SIZE bài trong một lần gọi call_llm_json để tiết kiệm token.
@@ -24,6 +24,7 @@ def score_papers(papers: list[Paper], topic: str) -> list[Paper]:
     Đầu vào:
         papers: Danh sách các đối tượng Paper cần chấm điểm.
         topic: Đề tài hoặc câu hỏi nghiên cứu của người dùng.
+        criteria: Tiêu chí ưu tiên hoặc loại trừ tùy chỉnh do người dùng nhập (tùy chọn).
 
     Đầu ra:
         Danh sách các đối tượng Paper đã được cập nhật relevance_score.
@@ -48,8 +49,11 @@ def score_papers(papers: list[Paper], topic: str) -> list[Paper]:
         # Chuẩn bị nội dung prompt cho từng bài: chỉ gồm i, tiêu đề, năm, abstract rút gọn
         lines: list[str] = [
             f"Chỉ dùng thông tin trong văn bản được cung cấp. Không bịa. Chấm mức phù hợp với đề tài nghiên cứu: {clean_topic}.\n",
-            "Danh sách bài báo:",
         ]
+        if criteria and criteria.strip():
+            lines.append(f"Tiêu chí sàng lọc ưu tiên / loại trừ bổ sung của chuyên gia: {criteria.strip()}.\n")
+
+        lines.append("Danh sách bài báo:")
 
         for i, paper in enumerate(batch, 1):
             title = paper.title or "Không có tiêu đề"

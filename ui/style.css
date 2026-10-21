@@ -51,12 +51,16 @@
         height: 2.2rem !important;
         background: transparent !important;
     }
+    html, body, [data-testid="stAppViewContainer"], .main {
+        overflow-anchor: auto !important;
+    }
     .block-container,
     [data-testid="stMainBlockContainer"],
     .main .block-container {
         padding-top: 1.6rem !important;
         padding-bottom: 2.8rem !important;
         max-width: 1440px;
+        overflow-anchor: auto !important;
     }
 
     /* Banner thương hiệu phong cách Glassmorphic với viền phát sáng lướt qua */
@@ -143,34 +147,67 @@
         font-weight: 450;
     }
 
-    /* Glassmorphic Cards với hiệu ứng Fade-In & Hover Elevation đa tầng */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
+    /* Glassmorphic Cards với hiệu ứng Hover mượt mà 60fps (Triệt tiêu rung giật khi rerun) */
+    div[class*="st-key-card_"],
+    div.stVerticalBlock:has(> [data-testid="stElementContainer"] .rf-card-marker) {
         background: linear-gradient(145deg, rgba(15, 23, 42, 0.75) 0%, rgba(20, 29, 50, 0.65) 100%) !important;
-        backdrop-filter: blur(20px) saturate(180%) !important;
-        -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-        border: 1px solid rgba(255, 255, 255, 0.09) !important;
+        backdrop-filter: blur(16px) saturate(160%) !important;
+        -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.10) !important;
         border-radius: 16px !important;
         box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
-        transition: all 0.32s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        animation: cardEntrance 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+        transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background 0.22s ease !important;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    div[class*="st-key-card_"]:hover,
+    div.stVerticalBlock:has(> [data-testid="stElementContainer"] .rf-card-marker):hover {
         border-color: rgba(99, 102, 241, 0.48) !important;
         box-shadow: 
-            0 16px 36px -8px rgba(0, 0, 0, 0.6),
-            0 0 24px -2px rgba(99, 102, 241, 0.22),
+            0 14px 32px -8px rgba(0, 0, 0, 0.6),
+            0 0 20px -2px rgba(99, 102, 241, 0.22),
             inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
-        transform: translateY(-3px);
+        transform: translateY(-2px);
     }
-    @keyframes cardEntrance {
-        from {
-            opacity: 0;
-            transform: translateY(12px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+
+    /* Tiêu đề khu vực (Selected vs Suggestions) */
+    .rf-section-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 1.1rem 0 0.75rem 0;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        letter-spacing: -0.01em;
+    }
+    .rf-section-selected {
+        color: #34d399 !important;
+    }
+    .rf-section-icon {
+        font-size: 1.25rem;
+    }
+    .rf-section-title {
+        font-weight: 700;
+    }
+    .rf-badge-counter {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border-radius: 9999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+    .rf-badge-counter-active {
+        background: rgba(16, 185, 129, 0.22);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.45);
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+    }
+    .rf-badge-counter-muted {
+        background: rgba(148, 163, 184, 0.15);
+        color: #94a3b8;
+        border: 1px solid rgba(148, 163, 184, 0.25);
     }
 
     /* Link tiêu đề bài báo phát sáng khi hover */
@@ -246,6 +283,50 @@
         color: #a5b4fc;
         border: 1px solid rgba(99, 102, 241, 0.38);
         box-shadow: 0 0 8px rgba(99, 102, 241, 0.15);
+    }
+    .rf-badge-selected {
+        background: rgba(16, 185, 129, 0.22) !important;
+        color: #10b981 !important;
+        border: 1px solid #10b981 !important;
+        font-weight: 700 !important;
+        box-shadow: 0 0 10px rgba(16, 185, 129, 0.4) !important;
+    }
+
+    /* Thẻ bài báo được chọn: viền dạ quang xanh ngọc tinh tế, chuyển động êm dịu */
+    div[class*="st-key-card_"]:has(.rf-card-selected-marker),
+    div.stVerticalBlock:has(> [data-testid="stElementContainer"] .rf-card-selected-marker),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.rf-card-selected-marker),
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.rf-card-selected-marker) > div {
+        border: 2px solid #10b981 !important;
+        border-radius: 16px !important;
+        box-shadow: 
+            0 0 0 1px rgba(16, 185, 129, 0.40),
+            0 0 20px rgba(16, 185, 129, 0.30),
+            0 10px 28px -4px rgba(0, 0, 0, 0.5),
+            inset 0 0 14px rgba(16, 185, 129, 0.08) !important;
+        background: linear-gradient(175deg, rgba(16, 185, 129, 0.09) 0%, rgba(15, 23, 42, 0.78) 40%, rgba(15, 23, 42, 0.90) 100%) !important;
+        transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease !important;
+    }
+
+    div[class*="st-key-card_"]:has(.rf-card-selected-marker):hover,
+    div.stVerticalBlock:has(> [data-testid="stElementContainer"] .rf-card-selected-marker):hover,
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.rf-card-selected-marker):hover {
+        border-color: #34d399 !important;
+        box-shadow: 
+            0 0 0 1px rgba(52, 211, 153, 0.55),
+            0 0 28px rgba(16, 185, 129, 0.42),
+            0 14px 32px -4px rgba(0, 0, 0, 0.6),
+            inset 0 0 18px rgba(16, 185, 129, 0.12) !important;
+        transform: translateY(-2px);
+    }
+
+    /* Huy hiệu đã chọn ở góc trên bên phải */
+    .rf-badge-selected-top {
+        display: inline-flex !important;
+        align-items: center !important;
+        white-space: nowrap !important;
+        margin-right: 8px !important;
+        box-shadow: 0 0 14px rgba(16, 185, 129, 0.5) !important;
     }
 
     /* Meta tác giả & tạp chí */
@@ -577,15 +658,29 @@
         overflow: hidden !important;
     }
 
-    /* Expander hiện đại */
+    /* Expander hiện đại & mượt mà */
     [data-testid="stExpander"] {
-        background: rgba(15, 23, 42, 0.45) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 12px !important;
-        transition: all 0.25s ease !important;
+        background: rgba(15, 23, 42, 0.55) !important;
+        border: 1px solid rgba(255, 255, 255, 0.10) !important;
+        border-radius: 14px !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+        transition: border-color 0.22s ease, box-shadow 0.22s ease !important;
+        margin-bottom: 0.9rem !important;
     }
     [data-testid="stExpander"]:hover {
         border-color: rgba(99, 102, 241, 0.35) !important;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45) !important;
+    }
+    [data-testid="stExpander"] summary {
+        font-weight: 600 !important;
+        color: #f1f5f9 !important;
+        padding: 0.7rem 1rem !important;
+        border-radius: 12px !important;
+        transition: color 0.2s ease, background 0.2s ease !important;
+    }
+    [data-testid="stExpander"] summary:hover {
+        color: #93c5fd !important;
+        background: rgba(255, 255, 255, 0.03) !important;
     }
 
     /* Tinh chỉnh thanh cuộn tinh xảo */
@@ -841,3 +936,42 @@
         height: 2px;
         background: linear-gradient(90deg, transparent 0%, #38bdf8 30%, #818cf8 60%, #c084fc 80%, transparent 100%);
     }
+
+    /* =========================================================================
+       CANVA GHOST FLIGHT ANIMATION STYLES (GPU 60FPS)
+       ========================================================================= */
+    div[data-testid="stHtml"]:has(#rf-flight-root),
+    #rf-flight-root {
+        position: absolute !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+    }
+    .rf-flight-ghost {
+        position: fixed !important;
+        z-index: 99999999 !important;
+        pointer-events: none !important;
+        box-sizing: border-box !important;
+        will-change: transform, opacity !important;
+        border-radius: 16px !important;
+        max-height: 250px !important;
+        overflow: hidden !important;
+        margin: 0 !important;
+        opacity: 1 !important;
+        backdrop-filter: blur(24px) saturate(180%) !important;
+        -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+    }
+    .rf-flight-ghost-selecting {
+        border: 2.5px solid #10b981 !important;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.95), 0 0 45px rgba(16, 185, 129, 0.85), inset 0 0 16px rgba(16, 185, 129, 0.25) !important;
+        background: linear-gradient(150deg, rgba(16, 185, 129, 0.25) 0%, rgba(15, 23, 42, 0.98) 25%, #080c14 100%) !important;
+    }
+    .rf-flight-ghost-deselecting {
+        border: 2.5px solid #38bdf8 !important;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.95), 0 0 45px rgba(56, 189, 248, 0.85), inset 0 0 16px rgba(56, 189, 248, 0.25) !important;
+        background: linear-gradient(150deg, rgba(56, 189, 248, 0.22) 0%, rgba(15, 23, 42, 0.98) 25%, #080c14 100%) !important;
+    }
+

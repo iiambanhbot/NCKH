@@ -34,6 +34,14 @@ class Paper:
     notes: str = ""
     analyzed: bool = False
 
+    def __hash__(self) -> int:
+        """Hàm băm cho Paper dựa trên DOI hoặc kết hợp (title, year) để hỗ trợ set/dict."""
+        clean_doi = (self.doi or "").strip().lower()
+        if clean_doi:
+            return hash(clean_doi)
+        clean_title = (self.title or "").strip().lower()
+        return hash((clean_title, self.year))
+
     def to_dict(self) -> dict[str, Any]:
         """
         Chuyển đổi đối tượng Paper thành dictionary đầy đủ các trường.

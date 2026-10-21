@@ -1,3 +1,4 @@
+from core.citation_exporter import papers_to_bibtex, papers_to_ris
 from core.excel_writer import papers_to_excel_bytes
 from core.file_cache import cache_get, cache_set, make_key
 from core.paper import Paper
@@ -10,6 +11,8 @@ __all__ = [
     "SelectionStore",
     "get_store",
     "papers_to_excel_bytes",
+    "papers_to_bibtex",
+    "papers_to_ris",
     "cache_get",
     "cache_set",
     "make_key",

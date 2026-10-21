@@ -26,6 +26,7 @@ def render_paper_card(
     paper: Paper,
     store: SelectionStore,
     index: int | None = None,
+    **kwargs,
 ) -> None:
     """
     Render giao diện một ô bài báo nghiên cứu chuẩn học thuật chuyên nghiệp.
@@ -51,9 +52,19 @@ def render_paper_card(
         or getattr(paper, "doi", "") in store._selected_ids
     )
 
-    with st.container(border=True):
+    # Dùng key cố định card_{safe_key} để Streamlit/React giữ nguyên DOM node, tránh giật lag do recreate
+    card_container_key = f"card_{safe_key}"
+    with st.container(border=True, key=card_container_key):
+        sel_str = "true" if is_selected else "false"
+        st.markdown(
+            f'<div class="rf-card-marker" data-rf-card-id="{safe_key}" data-rf-is-selected="{sel_str}" style="display:none;"></div>',
+            unsafe_allow_html=True,
+        )
+        if is_selected:
+            st.markdown('<div class="rf-card-selected-marker" style="display:none;"></div>', unsafe_allow_html=True)
+
         # 1. Hàng trên: Huy hiệu & Checkbox chọn bài
-        col_badges, col_check = st.columns([0.76, 0.24])
+        col_badges, col_check = st.columns([0.65, 0.35], vertical_alignment="center")
 
         with col_badges:
             badge_htmls: list[str] = []
@@ -84,15 +95,26 @@ def render_paper_card(
             st.markdown(f'<div class="rf-badge-row">{"".join(badge_htmls)}</div>', unsafe_allow_html=True)
 
         with col_check:
-            checked = st.checkbox(
-                "Chọn bài này",
-                value=is_selected,
-                key=f"chk_outer_{safe_key}",
-                help="Tích chọn bài báo để đưa vào danh sách xuất Excel",
-            )
-            if checked != is_selected:
-                store.set_selected(paper_id, checked)
-                st.rerun()
+            # Di chuyển chữ '✅ Đã chọn' sang hàng bên phải nằm cạnh nút chọn bài
+            with st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center"):
+                if is_selected:
+                    st.markdown(
+                        '<span class="rf-badge rf-badge-selected rf-badge-selected-top">✅ Đã chọn</span>',
+                        unsafe_allow_html=True,
+                    )
+                chk_key = f"chk_outer_{safe_key}"
+                if chk_key not in st.session_state or st.session_state[chk_key] != is_selected:
+                    st.session_state[chk_key] = is_selected
+
+                def _on_toggle(p_id=paper_id, k=chk_key, s=store):
+                    s.set_selected(p_id, st.session_state.get(k, False))
+
+                st.checkbox(
+                    "Chọn bài này",
+                    key=chk_key,
+                    on_change=_on_toggle,
+                    help="Tích chọn bài báo để đưa vào danh sách xuất Excel",
+                )
 
         # 2. Tiêu đề bài báo nổi bật và an toàn
         safe_title = (

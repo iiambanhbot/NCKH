@@ -27,25 +27,17 @@ def run_first_search(
     year_from: int,
     on_progress: Any | None = None,
     batch_size: int | None = None,
+    custom_keywords: dict[str, Any] | None = None,
+    custom_criteria: str | None = None,
+    deep_analyze: bool = True,
 ) -> list[Paper]:
     """
     Khởi chạy lượt tìm kiếm đầu tiên cho một đề tài nghiên cứu mới:
-    1. Reset store, đặt topic, sinh từ khóa song ngữ qua build_keywords (AI call 1) và lưu vào store.keywords.
-    2. Thu thập ứng viên từ OpenAlex: primary_en (limit ~20-40) và vi[0] nếu có (limit ~10-16).
-       Nếu USE_SEMANTIC_SCHOLAR bật thì gọi thêm Semantic Scholar. Ghi lại store.offsets.
-    3. merge → score_papers (AI call 2) → rank → nạp toàn bộ vào store.pool.
-    4. batch = store.take_from_pool(batch_size or FIRST_BATCH_SIZE) → analyze_papers(batch, topic) (AI call 3)
-       → store.add_papers(batch) → trả về batch.
-
-    Đầu vào:
-        topic: Chủ đề hoặc câu hỏi nghiên cứu người dùng nhập.
-        store: Đối tượng SelectionStore quản lý trạng thái phiên.
-        year_from: Năm xuất bản bắt đầu lấy tài liệu.
-        on_progress: Callback tùy chọn nhận (progress_float, message_str) để cập nhật thanh tiến trình.
-        batch_size: Số lượng bài báo cần hiển thị đợt đầu (tùy chọn: 5, 10, 15, 20... mặc định FIRST_BATCH_SIZE).
-
-    Đầu ra:
-        Danh sách bài báo đợt đầu (tối đa batch_size bài) đã phân tích để hiển thị.
+    1. Reset store, đặt topic, sử dụng custom_keywords nếu có hoặc sinh qua build_keywords.
+    2. Thu thập ứng viên từ OpenAlex & Semantic Scholar.
+    3. merge → score_papers (có áp dụng custom_criteria) → rank → nạp toàn bộ vào store.pool.
+    4. batch = store.take_from_pool(batch_size or FIRST_BATCH_SIZE)
+       → nếu deep_analyze=True: analyze_papers(batch, topic) → store.add_papers(batch) → trả về batch.
     """
     def _report(pct: float, msg: str) -> None:
         if on_progress and callable(on_progress):
@@ -61,17 +53,20 @@ def run_first_search(
 
     first_batch_size = int(batch_size) if batch_size is not None else int(getattr(settings, "FIRST_BATCH_SIZE", 10))
 
-    # 1. Reset và sinh từ khóa song ngữ (1 lần gọi AI)
+    # 1. Reset và thiết lập từ khóa song ngữ
     _report(0.12, "Phân tích đề tài & xây dựng từ khóa học thuật...")
     store.reset()
     store.topic = clean_topic
     store.target_count = first_batch_size
 
-    try:
-        keywords = build_keywords(clean_topic)
-    except Exception as exc:
-        logger.error("Lỗi khi sinh từ khóa: %s", exc)
-        keywords = {"primary_en": clean_topic, "en": [], "vi": [clean_topic]}
+    if custom_keywords and isinstance(custom_keywords, dict) and custom_keywords.get("primary_en"):
+        keywords = custom_keywords
+    else:
+        try:
+            keywords = build_keywords(clean_topic)
+        except Exception as exc:
+            logger.error("Lỗi khi sinh từ khóa: %s", exc)
+            keywords = {"primary_en": clean_topic, "en": [], "vi": [clean_topic]}
 
     store.keywords = keywords
 
@@ -123,7 +118,7 @@ def run_first_search(
         return []
 
     try:
-        scored_candidates = score_papers(merged_candidates, clean_topic)
+        scored_candidates = score_papers(merged_candidates, clean_topic, criteria=custom_criteria)
     except Exception as exc:
         logger.error("Lỗi khi chấm điểm ứng viên: %s", exc)
         scored_candidates = merged_candidates
@@ -131,22 +126,38 @@ def run_first_search(
     ranked_candidates = rank(scored_candidates)
     store.add_to_pool(ranked_candidates)
 
-    # 4. Lấy đợt đầu từ kho ứng viên và phân tích chuyên sâu (1 lần gọi AI)
-    _report(0.88, "Tóm tắt & trích xuất học thuật chuyên sâu đợt đầu...")
+    # 4. Lấy đợt đầu từ kho ứng viên
     batch = store.take_from_pool(first_batch_size)
     if not batch:
         _report(1.0, "Đã lưu vào kho ứng viên.")
         return []
 
-    try:
-        analyzed_batch = analyze_papers(batch, clean_topic)
-    except Exception as exc:
-        logger.error("Lỗi khi phân tích chuyên sâu đợt đầu: %s", exc)
+    if deep_analyze:
+        _report(0.88, "Tóm tắt & trích xuất học thuật chuyên sâu đợt đầu...")
+        try:
+            analyzed_batch = analyze_papers(batch, clean_topic)
+        except Exception as exc:
+            logger.error("Lỗi khi phân tích chuyên sâu đợt đầu: %s", exc)
+            analyzed_batch = batch
+    else:
+        _report(0.95, "Đã tải danh sách bài thô kèm điểm sàng lọc sơ bộ...")
         analyzed_batch = batch
 
     store.add_papers(analyzed_batch)
     _report(1.0, f"Hoàn tất! Đã tìm thấy {len(analyzed_batch)} bài báo đầu tiên.")
     return analyzed_batch
+
+
+def analyze_selected_papers(papers: list[Paper], topic: str) -> list[Paper]:
+    """Phân tích chuyên sâu hàng loạt bài báo do người dùng chỉ định."""
+    if not papers:
+        return []
+    to_analyze = [p for p in papers if not getattr(p, "analyzed", False)]
+    if not to_analyze:
+        return papers
+    analyzed = analyze_papers(to_analyze, topic=topic)
+    return analyzed
+
 
 
 def load_more(store: SelectionStore, year_from: int) -> list[Paper]:

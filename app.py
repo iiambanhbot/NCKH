@@ -12,10 +12,13 @@ from typing import Any
 
 import streamlit as st
 
-from core import SelectionStore, get_store, papers_to_excel_bytes
+from core import SelectionStore, get_store, papers_to_excel_bytes, papers_to_bibtex, papers_to_ris
 from core.settings import DEFAULT_YEAR_FROM
-from search import load_more, run_first_search
-from ui import render_load_more, render_paper_card, render_roadmap_page
+from search import analyze_selected_papers, load_more, run_first_search
+from ui.flight import render_flight_controller
+from ui.load_more import render_load_more
+from ui.paper_card import render_paper_card
+from ui.roadmap_page import render_roadmap_page
 
 # Cấu hình giao diện Streamlit (layout rộng, ẩn sidebar)
 st.set_page_config(
@@ -56,6 +59,9 @@ st.markdown(
 
 def render_search_page(store: SelectionStore) -> None:
     """Render trang tìm kiếm, sàng lọc và trích xuất tài liệu nghiên cứu."""
+    # Kích hoạt hiệu ứng bay Canva Ghost Flight trên client-side
+    render_flight_controller()
+
     # =========================================================================
     # PHẦN TRÊN: KHUNG ĐỀ TÀI NGHIÊN CỨU & BỘ LỌC
     # =========================================================================
@@ -105,9 +111,41 @@ def render_search_page(store: SelectionStore) -> None:
         if reset_clicked:
             store.reset()
             for k in list(st.session_state.keys()):
-                if "Nhập đề tài" in str(k):
+                if "Nhập đề tài" in str(k) or "cfg_" in str(k):
                     st.session_state[k] = ""
             st.rerun()
+
+        # Chế độ Can thiệp Chuyên gia (Tùy chỉnh Từ khóa, Tiêu chí & Lọc bài)
+        with st.expander("⚙️ Chế độ Can thiệp Chuyên gia (Tùy chỉnh Từ khóa OpenAlex, Tiêu chí Sàng lọc & Lọc bài)", expanded=False):
+            st.caption("💡 *Tự chủ quyền kiểm soát: Điều chỉnh từ khóa trước khi truy vấn OpenAlex và đưa ra tiêu chí riêng cho AI chấm điểm.*")
+            col_k1, col_k2 = st.columns(2)
+            with col_k1:
+                custom_en = st.text_input(
+                    "🔑 Từ khóa tiếng Anh tra cứu OpenAlex (bỏ trống để AI tự sinh):",
+                    key="cfg_custom_en",
+                    placeholder="Ví dụ: digital banking efficiency DEA frontier...",
+                    help="Hệ thống sẽ dùng trực tiếp từ khóa này để truy vấn OpenAlex",
+                )
+            with col_k2:
+                custom_vi = st.text_input(
+                    "🇻🇳 Từ khóa tiếng Việt bổ trợ (tùy chọn):",
+                    key="cfg_custom_vi",
+                    placeholder="Ví dụ: ngân hàng số hiệu quả hoạt động...",
+                )
+
+            custom_criteria = st.text_input(
+                "🎯 Tiêu chí sàng lọc ưu tiên / loại trừ riêng của bạn (AI sẽ dựa vào đây để chấm điểm):",
+                key="cfg_custom_criteria",
+                placeholder="Ví dụ: Chỉ lấy bài nghiên cứu tại các nước đang phát triển / Bắt buộc mô hình định lượng / Loại bỏ bài tổng quan lý thuyết...",
+                help="AI sẽ đọc tiêu chí này và chấm điểm độ phù hợp chính xác theo mong muốn của bạn",
+            )
+
+            preview_raw = st.checkbox(
+                "👀 Chế độ xem trước bài thô (chỉ tải bài và chấm điểm sơ bộ, bạn tự chọn bài rồi mới phân tích sâu)",
+                key="cfg_preview_raw",
+                value=False,
+                help="Tiết kiệm token và thời gian: Cho phép bạn lướt qua tiêu đề/abstract trước khi quyết định bài nào cần phân tích sâu",
+            )
 
         # Sau khi nhập đề tài: Hiển thị thông tin đề tài & từ khóa AI gợi ý
         if store.topic:
@@ -186,6 +224,14 @@ def render_search_page(store: SelectionStore) -> None:
             def progress_callback(pct: float, msg: str) -> None:
                 state["stage"] = msg
 
+            kw_override = (
+                {"primary_en": custom_en.strip(), "vi": [custom_vi.strip()] if custom_vi.strip() else []}
+                if custom_en and custom_en.strip()
+                else None
+            )
+            crit_override = custom_criteria.strip() if custom_criteria and custom_criteria.strip() else None
+            deep_flag = not bool(preview_raw)
+
             def worker_thread() -> None:
                 try:
                     state["results"] = run_first_search(
@@ -194,6 +240,9 @@ def render_search_page(store: SelectionStore) -> None:
                         year_from=int(year_from),
                         on_progress=progress_callback,
                         batch_size=int(target_count),
+                        custom_keywords=kw_override,
+                        custom_criteria=crit_override,
+                        deep_analyze=deep_flag,
                     )
                 except Exception as exc:
                     state["error"] = exc
@@ -261,15 +310,15 @@ def render_search_page(store: SelectionStore) -> None:
                 "Các bài báo vẫn được hiển thị đầy đủ bên dưới. Bạn có thể bấm 'Tóm tắt bằng AI' ở từng bài để thử lại."
             )
 
-        # Thanh tác vụ: Thống kê & Nút "Xuất Excel" chỉ xuất bài đã chọn
-        col_summary, col_roadmap_tip, col_export = st.columns([0.48, 0.22, 0.30])
+        # Thanh tác vụ: Thống kê & Các nút xuất tài liệu tham khảo (Excel, BibTeX, RIS)
+        col_summary, col_exp_excel, col_exp_bib, col_exp_ris = st.columns([0.38, 0.22, 0.20, 0.20])
 
         with col_summary:
             st.markdown(
                 f"""
                 <div style="display: flex; align-items: center; gap: 8px; height: 100%; padding: 6px 0;">
-                    <span style="font-size: 0.95rem; color: #94a3b8;">
-                        Đang hiển thị: <strong style="color: #f8fafc;">{len(displayed_papers)}</strong> bài &nbsp;•&nbsp; 
+                    <span style="font-size: 0.92rem; color: #94a3b8;">
+                        Đang xem: <strong style="color: #f8fafc;">{len(displayed_papers)}</strong> bài &nbsp;•&nbsp; 
                         Đã chọn: <strong style="color: #38bdf8;">{len(selected_papers)}</strong> bài
                     </span>
                 </div>
@@ -277,40 +326,162 @@ def render_search_page(store: SelectionStore) -> None:
                 unsafe_allow_html=True,
             )
 
-        with col_roadmap_tip:
-            st.markdown(
-                """
-                <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
-                    <span style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #a5b4fc; font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 8px;">
-                        🗺️ Tab trên: Lộ trình & Sơ đồ NCKH
-                    </span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with col_export:
+        with col_exp_excel:
             if selected_papers:
                 excel_bytes = papers_to_excel_bytes(selected_papers)
                 st.download_button(
-                    label=f"📥 Xuất Excel ({len(selected_papers)} bài đã chọn)",
+                    label=f"📊 Excel ({len(selected_papers)})",
                     data=excel_bytes,
                     file_name="tai_lieu_nghien_cuu.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                     use_container_width=True,
+                    help="Xuất bảng Excel 18 cột học thuật chi tiết",
                 )
             else:
                 st.button(
-                    "📥 Xuất Excel",
+                    "📊 Excel",
                     disabled=True,
                     use_container_width=True,
-                    help="Vui lòng tích chọn ít nhất 1 bài báo để xuất Excel",
+                    help="Tích chọn bài báo để xuất",
                 )
 
-        # Hiện các ô bằng ui.paper_card có đánh số thứ tự từng bài (Bài #1, #2, ...)
-        for idx, paper in enumerate(displayed_papers, 1):
-            render_paper_card(paper, store, index=idx)
+        with col_exp_bib:
+            if selected_papers:
+                bib_content = papers_to_bibtex(selected_papers)
+                st.download_button(
+                    label="📚 BibTeX (.bib)",
+                    data=bib_content,
+                    file_name="tai_lieu_trich_dan.bib",
+                    mime="application/x-bibtex",
+                    use_container_width=True,
+                    help="Nhập 1-click vào Zotero, Mendeley, Overleaf, LaTeX",
+                )
+            else:
+                st.button(
+                    "📚 BibTeX",
+                    disabled=True,
+                    use_container_width=True,
+                    help="Tích chọn bài báo để xuất",
+                )
+
+        with col_exp_ris:
+            if selected_papers:
+                ris_content = papers_to_ris(selected_papers)
+                st.download_button(
+                    label="📑 RIS (.ris)",
+                    data=ris_content,
+                    file_name="tai_lieu_trich_dan.ris",
+                    mime="application/x-research-info-systems",
+                    use_container_width=True,
+                    help="Nhập 1-click vào EndNote, Zotero, Mendeley, RefWorks",
+                )
+            else:
+                st.button(
+                    "📑 RIS",
+                    disabled=True,
+                    use_container_width=True,
+                    help="Tích chọn bài báo để xuất",
+                )
+        # Nếu có bài chưa được phân tích sâu (ở chế độ xem trước bài thô hoặc thử lại)
+        unanalyzed = [p for p in displayed_papers if not getattr(p, "analyzed", False)]
+        if unanalyzed:
+            target_to_deep = [p for p in selected_papers if not getattr(p, "analyzed", False)]
+            if not target_to_deep:
+                target_to_deep = unanalyzed
+
+            col_deep_act, _ = st.columns([0.5, 0.5])
+            with col_deep_act:
+                if st.button(
+                    f"🧠 Yêu cầu AI Phân tích sâu ({len(target_to_deep)} bài đang chờ)",
+                    type="primary",
+                    use_container_width=True,
+                    help="AI sẽ đọc toàn bộ abstract và trích xuất phương pháp, cỡ mẫu, biến số, phát hiện và hạn chế đối với đề tài",
+                ):
+                    with st.spinner(f"Đang phân tích chuyên sâu {len(target_to_deep)} bài báo bằng AI..."):
+                        updated_papers = analyze_selected_papers(target_to_deep, store.topic)
+                        for up in updated_papers:
+                            store.update_paper(up)
+                        st.success("Đã hoàn tất phân tích chuyên sâu!")
+                        st.rerun()
+
+        # Tách danh sách thành 2 khu vực riêng biệt:
+        # 1. Các bài đã chọn (đẩy lên trên cùng, viền xanh lá dạ quang)
+        # 2. Các bài gợi ý còn lại (chưa chọn)
+        selected_papers = store.get_selected()
+        selected_ids = store._selected_ids
+
+        selected_list: list[Paper] = []
+        unselected_list: list[Paper] = []
+        for p in displayed_papers:
+            p_id = getattr(p, "id", "") or getattr(p, "doi", "") or p.title
+            p_doi = getattr(p, "doi", "")
+            if p in selected_papers or p_id in selected_ids or (p_doi and p_doi in selected_ids):
+                selected_list.append(p)
+            else:
+                unselected_list.append(p)
+
+        # =====================================================================
+        # KHU VỰC 1: CÁC BÀI BÁO ĐÃ CHỌN (Chỉ hiển thị khi có ít nhất 1 bài được chọn)
+        # =====================================================================
+        st.markdown('<div id="rf-selected-anchor" style="height:0;margin:0;padding:0;pointer-events:none;"></div>', unsafe_allow_html=True)
+        if selected_list:
+            st.markdown('<div id="rf-selected-target" style="height:0;margin:0;padding:0;pointer-events:none;"></div>', unsafe_allow_html=True)
+            with st.expander(
+                f"⭐ Bài báo đã chọn để trích dẫn & xuất dữ liệu ({len(selected_list)} bài)",
+                expanded=True,
+            ):
+                col_sel_title, col_sel_btn = st.columns([0.76, 0.24], vertical_alignment="center")
+                with col_sel_title:
+                    st.markdown(
+                        f"""
+                        <div class="rf-section-header rf-section-selected" style="margin-top: 0.2rem;">
+                            <span class="rf-section-icon">⭐</span>
+                            <span class="rf-section-title">Danh sách bài đã chọn</span>
+                            <span class="rf-badge-counter rf-badge-counter-active">{len(selected_list)} bài</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with col_sel_btn:
+                    if st.button("🧹 Bỏ chọn tất cả", key="btn_deselect_all", use_container_width=True, help="Bỏ chọn tất cả các bài báo"):
+                        store.clear_selection()
+                        for k in list(st.session_state.keys()):
+                            if k.startswith("chk_outer_"):
+                                st.session_state[k] = False
+                        st.rerun()
+
+                for idx, paper in enumerate(selected_list, 1):
+                    render_paper_card(paper, store, index=idx)
+
+            st.markdown(
+                """
+                <div style="margin: 1.5rem 0 1.25rem 0; border-top: 1px dashed rgba(255, 255, 255, 0.12); position: relative;">
+                    <span style="position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: #080c14; padding: 0 14px; font-size: 0.8rem; color: #64748b; letter-spacing: 0.05em; text-transform: uppercase;">Kho bài báo gợi ý</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        # =====================================================================
+        # KHU VỰC 2: CÁC BÀI BÁO GỢI Ý CÒN LẠI (CHƯA ĐƯỢC CHỌN)
+        # =====================================================================
+        if unselected_list:
+            st.markdown('<div id="rf-suggestions-target" style="height:0;margin:0;padding:0;pointer-events:none;"></div>', unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <div class="rf-section-header">
+                    <span class="rf-section-icon">📄</span>
+                    <span class="rf-section-title">Danh sách bài báo gợi ý</span>
+                    <span class="rf-badge-counter rf-badge-counter-muted">{len(unselected_list)} bài</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            for idx, paper in enumerate(unselected_list, len(selected_list) + 1 if selected_list else 1):
+                render_paper_card(paper, store, index=idx)
+        elif selected_list:
+            st.info("💡 Bạn đã tích chọn tất cả các bài báo đang hiển thị. Hãy bấm nút 'Thêm 5 bài' bên dưới nếu muốn tìm kiếm thêm tài liệu mới.")
 
         # Nút "Thêm 5 bài" (ui.load_more) → pipeline.load_more
         st.markdown("---")
